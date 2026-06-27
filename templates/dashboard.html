@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon stat-blue">📄</div>
+        <div class="stat-body">
+            <div class="stat-value">{{ total_docs }}</div>
+            <div class="stat-label">Documents Analyzed</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon stat-red">⚠️</div>
+        <div class="stat-body">
+            <div class="stat-value">{{ high_risk }}</div>
+            <div class="stat-label">High-Risk Documents</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon stat-green">📚</div>
+        <div class="stat-body">
+            <div class="stat-value">{{ total_cases }}</div>
+            <div class="stat-label">Cases in Database</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon stat-orange">🚨</div>
+        <div class="stat-body">
+            <div class="stat-value">{{ alerts_sent }}</div>
+            <div class="stat-label">SOS Alerts Sent</div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Grid -->
+<div class="dashboard-grid">
+
+    <!-- Chart Card -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h3>📊 Risk Distribution</h3>
+            <span class="badge badge-blue">Your Documents</span>
+        </div>
+        <div class="chart-container">
+            <canvas id="riskChart" width="300" height="300"></canvas>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+        <div class="card-header">
+            <h3>⚡ Quick Actions</h3>
+        </div>
+        <div class="quick-actions">
+            <a href="{{ url_for('scanner.index') }}" class="action-btn action-blue">
+                <span>📄</span>
+                <span>Scan Document</span>
+            </a>
+            <a href="{{ url_for('legal.index') }}" class="action-btn action-purple">
+                <span>⚖️</span>
+                <span>Ask Legal Question</span>
+            </a>
+            <a href="{{ url_for('cases.index') }}" class="action-btn action-green">
+                <span>📚</span>
+                <span>Find Cases</span>
+            </a>
+            <a href="{{ url_for('lawyers.index') }}" class="action-btn action-teal">
+                <span>👨‍⚖️</span>
+                <span>Find Lawyer</span>
+            </a>
+            <a href="{{ url_for('protect.index') }}" class="action-btn action-red">
+                <span>🚨</span>
+                <span>Emergency Mode</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Recent Documents -->
+    <div class="card full-width">
+        <div class="card-header">
+            <h3>🗂️ Recent Documents</h3>
+            <a href="{{ url_for('scanner.history') }}" class="link-sm">View All →</a>
+        </div>
+        {% if recent_docs %}
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Document</th>
+                        <th>Type</th>
+                        <th>Risk Score</th>
+                        <th>Risk Level</th>
+                        <th>Clauses</th>
+                        <th>Uploaded</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in recent_docs %}
+                    <tr>
+                        <td class="doc-name">{{ doc.original_name }}</td>
+                        <td><span class="tag">{{ doc.document_type | capitalize }}</span></td>
+                        <td>
+                            <div class="risk-bar-wrap">
+                                <div class="risk-bar risk-bar-{{ doc.risk_label | lower }}" style="width: {{ doc.risk_score }}%"></div>
+                                <span>{{ doc.risk_score }}%</span>
+                            </div>
+                        </td>
+                        <td><span class="badge badge-{{ doc.risk_label | lower }}">{{ doc.risk_label }}</span></td>
+                        <td>{{ doc.clause_count }}</td>
+                        <td class="text-muted">{{ doc.upload_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📄</div>
+            <p>No documents analyzed yet.</p>
+            <a href="{{ url_for('scanner.index') }}" class="btn-primary">Upload Your First Document</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ctx = document.getElementById('riskChart').getContext('2d');
+new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Low Risk', 'Medium Risk', 'High Risk'],
+        datasets: [{
+            data: [{{ risk_counts.LOW }}, {{ risk_counts.MEDIUM }}, {{ risk_counts.HIGH }}],
+            backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+            borderColor: ['#16a34a', '#d97706', '#dc2626'],
+            borderWidth: 2,
+            hoverOffset: 8,
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: '#94a3b8', padding: 20, font: { family: 'Inter', size: 13 } }
+            }
+        },
+        cutout: '65%',
+    }
+});
+</script>
+{% endblock %}

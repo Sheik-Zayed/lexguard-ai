@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Document Scanner{% endblock %}
+{% block page_title %}Document Scanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">📄 Document Risk Scanner</h1>
+    <p class="page-subtitle">Upload a PDF contract or agreement to detect risky clauses using AI analysis.</p>
+</div>
+
+<!-- Upload Zone -->
+<div class="card upload-card">
+    <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">🗂️</div>
+        <h3>Drop your PDF here</h3>
+        <p>or click to browse files</p>
+        <p class="upload-hint">Supports: PDF files up to 10MB</p>
+        <input type="file" id="fileInput" accept=".pdf" hidden>
+        <label for="fileInput" class="btn-primary" style="margin-top: 1rem; cursor: pointer;">Choose File</label>
+    </div>
+    <div id="fileInfo" class="file-info" style="display:none;"></div>
+    <div style="text-align:center; margin-top:1.5rem;">
+        <button class="btn-primary btn-lg" id="scanBtn" onclick="startScan()" style="display:none;">
+            🔍 Analyze Document
+        </button>
+    </div>
+</div>
+
+<!-- Loading State -->
+<div id="loadingState" class="loading-state" style="display:none;">
+    <div class="loading-spinner"></div>
+    <h3>Analyzing your document...</h3>
+    <p>Extracting clauses and detecting legal risks</p>
+    <div class="loading-steps">
+        <div class="loading-step" id="step1">📄 Extracting text from PDF...</div>
+        <div class="loading-step" id="step2">✂️ Splitting into clauses...</div>
+        <div class="loading-step" id="step3">⚖️ Analyzing risk patterns...</div>
+        <div class="loading-step" id="step4">💾 Saving results...</div>
+    </div>
+</div>
+
+<!-- Results -->
+<div id="resultsSection" style="display:none;">
+
+    <!-- Summary Card -->
+    <div class="card result-summary">
+        <div class="result-header">
+            <div>
+                <h2 id="docName" class="result-doc-name"></h2>
+                <p id="docType" class="result-doc-type"></p>
+            </div>
+            <div class="risk-badge-lg" id="riskBadgeLg"></div>
+        </div>
+
+        <div class="result-stats">
+            <div class="result-stat">
+                <div class="result-stat-value" id="totalClauses">0</div>
+                <div class="result-stat-label">Clauses Analyzed</div>
+            </div>
+            <div class="result-stat">
+                <div class="result-stat-value text-red" id="highCount">0</div>
+                <div class="result-stat-label">High Risk</div>
+            </div>
+            <div class="result-stat">
+                <div class="result-stat-value text-amber" id="mediumCount">0</div>
+                <div class="result-stat-label">Medium Risk</div>
+            </div>
+            <div class="result-stat">
+                <div class="result-stat-value text-green" id="lowCount">0</div>
+                <div class="result-stat-label">Low Risk</div>
+            </div>
+        </div>
+
+        <!-- Heatmap bar -->
+        <div class="heatmap-bar">
+            <div class="heatmap-seg heatmap-high" id="heatHigh"></div>
+            <div class="heatmap-seg heatmap-medium" id="heatMedium"></div>
+            <div class="heatmap-seg heatmap-low" id="heatLow"></div>
+        </div>
+    </div>
+
+    <!-- Clause List -->
+    <div id="clauseList" class="clause-list"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+const scanBtn = document.getElementById('scanBtn');
+let selectedFile = null;
+
+// Drag & drop
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragging'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragging'));
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/pdf') setFile(file);
+});
+
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) setFile(e.target.files[0]);
+});
+
+function setFile(file) {
+    selectedFile = file;
+    fileInfo.innerHTML = `<span class="file-tag">📄 ${file.name}</span><span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>`;
+    fileInfo.style.display = 'flex';
+    scanBtn.style.display = 'inline-block';
+}
+
+async function startScan() {
+    if (!selectedFile) return;
+
+    document.getElementById('loadingState').style.display = 'block';
+    document.getElementById('resultsSection').style.display = 'none';
+    scanBtn.disabled = true;
+
+    const steps = ['step1', 'step2', 'step3', 'step4'];
+    let stepIndex = 0;
+    const stepInterval = setInterval(() => {
+        if (stepIndex < steps.length) {
+            document.getElementById(steps[stepIndex]).classList.add('step-active');
+            stepIndex++;
+        }
+    }, 800);
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+        const res = await fetch('/api/upload-document', { method: 'POST', body: formData });
+        const data = await res.json();
+        clearInterval(stepInterval);
+        document.getElementById('loadingState').style.display = 'none';
+        scanBtn.disabled = false;
+
+        if (data.success) {
+            renderResults(data);
+        } else {
+            alert('Error: ' + (data.error || 'Analysis failed'));
+        }
+    } catch (err) {
+        clearInterval(stepInterval);
+        document.getElementById('loadingState').style.display = 'none';
+        scanBtn.disabled = false;
+        alert('Network error: ' + err.message);
+    }
+}
+
+function renderResults(data) {
+    document.getElementById('resultsSection').style.display = 'block';
+    document.getElementById('docName').textContent = data.document_name;
+    document.getElementById('docType').textContent = 'Document Type: ' + (data.document_type || 'contract');
+    document.getElementById('totalClauses').textContent = data.clause_count;
+    document.getElementById('highCount').textContent = data.heatmap.high;
+    document.getElementById('mediumCount').textContent = data.heatmap.medium;
+    document.getElementById('lowCount').textContent = data.heatmap.low;
+
+    const badgeLg = document.getElementById('riskBadgeLg');
+    badgeLg.textContent = data.risk_label + ' RISK';
+    badgeLg.className = 'risk-badge-lg badge-' + data.risk_label.toLowerCase();
+
+    // Heatmap
+    const total = data.clause_count || 1;
+    document.getElementById('heatHigh').style.width = (data.heatmap.high / total * 100) + '%';
+    document.getElementById('heatMedium').style.width = (data.heatmap.medium / total * 100) + '%';
+    document.getElementById('heatLow').style.width = (data.heatmap.low / total * 100) + '%';
+
+    // Clauses
+    const list = document.getElementById('clauseList');
+    list.innerHTML = '';
+    data.clauses.forEach(c => {
+        const el = document.createElement('div');
+        el.className = `clause-card clause-${c.risk_level.toLowerCase()}`;
+        el.innerHTML = `
+            <div class="clause-header">
+                <span class="clause-num">Clause ${c.clause_number}</span>
+                <span class="clause-type-tag">${c.clause_type}</span>
+                <span class="badge badge-${c.risk_level.toLowerCase()}">${c.risk_level}</span>
+            </div>
+            <p class="clause-text">${c.clause_text}</p>
+            <div class="clause-analysis">
+                <div class="analysis-row">
+                    <span class="analysis-label">⚠️ Risk:</span>
+                    <span>${c.explanation}</span>
+                </div>
+                <div class="analysis-row">
+                    <span class="analysis-label">✅ Fix:</span>
+                    <span>${c.suggested_fix}</span>
+                </div>
+            </div>
+        `;
+        list.appendChild(el);
+    });
+    document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}

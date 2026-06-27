@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Legal Advisor{% endblock %}
+{% block page_title %}Legal Advisor{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">⚖️ AI Legal Advisor</h1>
+    <p class="page-subtitle">Ask any legal question. Our AI retrieves relevant IPC sections and provides structured guidance.</p>
+</div>
+
+<div class="advisor-layout">
+    <!-- Query Panel -->
+    <div class="card query-panel">
+        <div class="ipc-badge">📖 Indian Penal Code + Special Acts</div>
+        <h3>Ask Your Legal Question</h3>
+        <textarea id="legalQuestion" placeholder="e.g. What is the punishment for theft? What are my rights if arrested? What is Section 498A?" rows="5"></textarea>
+
+        <div class="sample-queries">
+            <p class="sample-label">Try these:</p>
+            <div class="sample-chips">
+                <button class="chip" onclick="setQuery('What is the punishment for murder in India?')">Murder punishment</button>
+                <button class="chip" onclick="setQuery('Rights if arrested by police')">Rights on arrest</button>
+                <button class="chip" onclick="setQuery('What is cheque bounce law?')">Cheque bounce</button>
+                <button class="chip" onclick="setQuery('Domestic violence laws for women')">Domestic violence</button>
+                <button class="chip" onclick="setQuery('Cyber crime punishment hacking')">Cyber crime</button>
+            </div>
+        </div>
+
+        <button class="btn-primary btn-lg" id="askBtn" onclick="askLegal()">
+            ⚖️ Explain My Rights
+        </button>
+    </div>
+
+    <!-- Results Panel -->
+    <div id="legalResult" style="display:none;">
+
+        <!-- Primary Section Card -->
+        <div class="card law-primary-card" id="primaryCard">
+            <div class="law-section-badge" id="sectionBadge"></div>
+            <h2 id="lawTitle" class="law-title"></h2>
+            <p id="lawDescription" class="law-description"></p>
+
+            <div class="punishment-box">
+                <span class="punishment-label">⚖️ Punishment:</span>
+                <span id="lawPunishment" class="punishment-text"></span>
+            </div>
+
+            <div class="advice-box">
+                <span class="advice-label">💡 Practical Advice:</span>
+                <div id="practicalAdvice"></div>
+            </div>
+        </div>
+
+        <!-- Related Laws -->
+        <div class="card">
+            <div class="card-header">
+                <h3>📚 All Retrieved Sections <span class="badge badge-blue" id="lawCount"></span></h3>
+            </div>
+            <div id="lawRefs" class="law-refs-list"></div>
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="disclaimer-card">
+            ⚠️ This information is for educational purposes only and does not constitute legal advice. Always consult a licensed lawyer for your specific situation.
+        </div>
+    </div>
+
+    <!-- No Match -->
+    <div id="noMatch" class="card no-match-card" style="display:none;">
+        <div class="no-match-icon">🔍</div>
+        <h3>No IPC sections found for your query</h3>
+        <p id="noMatchMsg"></p>
+        <p>Try using keywords like: murder, theft, fraud, assault, cheque bounce, domestic violence, rape, kidnapping, cyber crime, defamation</p>
+    </div>
+</div>
+
+<!-- Loading -->
+<div id="loadingLegal" class="loading-state" style="display:none;">
+    <div class="loading-spinner"></div>
+    <p>Searching legal database...</p>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* Legal Advisor v3 — uses RAG response shape: {query, sections, llm_answer, source} */
+
+function setQuery(q) {
+    document.getElementById('legalQuestion').value = q;
+}
+
+function resetUI() {
+    document.getElementById('legalResult').style.display = 'none';
+    document.getElementById('noMatch').style.display    = 'none';
+    document.getElementById('loadingLegal').style.display = 'block';
+    document.getElementById('askBtn').disabled           = true;
+}
+
+function showError(msg) {
+    document.getElementById('loadingLegal').style.display = 'none';
+    document.getElementById('askBtn').disabled            = false;
+    document.getElementById('noMatchMsg').textContent     = msg || 'Something went wrong. Please try again.';
+    document.getElementById('noMatch').style.display      = 'block';
+}
+
+async function askLegal() {
+    const q = document.getElementById('legalQuestion').value.trim();
+    if (!q) { alert('Please enter a question.'); return; }
+
+    resetUI();
+
+    let data;
+    try {
+        const res = await fetch('/api/legal-query', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ question: q })
+        });
+        if (!res.ok) {
+            showError('Server error (' + res.status + '). Please try again.');
+            return;
+        }
+        data = await res.json();
+    } catch (err) {
+        showError('Network error: ' + err.message);
+        return;
+    }
+
+    document.getElementById('loadingLegal').style.display = 'none';
+    document.getElementById('askBtn').disabled            = false;
+
+    /* ── Validate response shape ── */
+    if (!data || typeof data !== 'object') {
+        showError('Received invalid response from server.');
+        return;
+    }
+
+    const llm      = data.llm_answer  || {};
+    const sections = data.sections    || [];
+
+    if (!sections.length) {
+        showError(llm.plain_meaning || 'No relevant IPC sections found. Try different keywords.');
+        return;
+    }
+
+    /* ── Populate primary card ── */
+    document.getElementById('sectionBadge').textContent  = llm.primary_section || sections[0].section || 'IPC';
+    document.getElementById('lawTitle').textContent      = llm.primary_title   || sections[0].title   || 'Legal Information';
+    document.getElementById('lawDescription').textContent= llm.plain_meaning   || sections[0].description || '';
+    document.getElementById('lawPunishment').textContent = llm.punishment      || sections[0].punishment || 'Refer to the section';
+
+    /* practical advice — numbered list */
+    const adviceRaw = llm.practical_advice || '1. Consult a licensed advocate.\n2. File an FIR if a cognizable offence occurred.\n3. Preserve all evidence.';
+    document.getElementById('practicalAdvice').innerHTML =
+        adviceRaw
+            .split('\n')
+            .filter(l => l.trim())
+            .map(l => '<p style="margin:4px 0">' + l + '</p>')
+            .join('');
+
+    /* ── Populate section list ── */
+    document.getElementById('lawCount').textContent = sections.length + ' section' + (sections.length !== 1 ? 's' : '');
+    document.getElementById('lawRefs').innerHTML = sections.map(r => `
+        <details class="law-detail">
+            <summary>
+                <span class="law-section-tag">${esc(r.section || 'Law')}</span>
+                <strong>${esc(r.title || '')}</strong>
+            </summary>
+            <div class="law-detail-body">
+                <p>${esc(r.description || '')}</p>
+                <div class="punishment-mini">⚖️ ${esc(r.punishment || 'See section')}</div>
+            </div>
+        </details>
+    `).join('');
+
+    /* source badge */
+    if (data.source) {
+        const src = {'gemini':'🤖 Gemini AI','openai':'🤖 GPT-4o','tfidf':'📚 Local Database'}[data.source] || data.source;
+        document.getElementById('sectionBadge').textContent += '  ·  ' + src;
+    }
+
+    document.getElementById('legalResult').style.display = 'block';
+}
+
+function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.getElementById('legalQuestion').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askLegal(); }
+});
+</script>
+{% endblock %}

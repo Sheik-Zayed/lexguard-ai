@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Admin — Lawyer Management{% endblock %}
+{% block page_title %}Admin Panel{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <div>
+    <h1 class="admin-title">⚖️ Lawyer Management</h1>
+    <p class="admin-subtitle">{{ lawyers|length }} lawyer{{ 's' if lawyers|length != 1 }} in database</p>
+  </div>
+  <a href="{{ url_for('admin.add_lawyer') }}" class="btn btn-primary btn-lg">
+    <span>＋</span> Add New Lawyer
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="GET" action="{{ url_for('admin.lawyers') }}" class="admin-filter-bar">
+  <input type="text" name="search" value="{{ search }}" placeholder="🔍 Search by name…" class="filter-input">
+  <select name="specialization" class="filter-select">
+    <option value="">All Specializations</option>
+    {% for s in specializations %}
+    <option value="{{ s }}" {% if selected_specialization == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="city" class="filter-select">
+    <option value="">All Cities</option>
+    {% for c in cities %}
+    <option value="{{ c }}" {% if selected_city == c %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-secondary">Filter</button>
+  <a href="{{ url_for('admin.lawyers') }}" class="btn btn-ghost">Reset</a>
+</form>
+
+<!-- Table -->
+<div class="admin-table-card">
+  {% if lawyers %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Photo</th>
+        <th>Name</th>
+        <th>Specialization</th>
+        <th>City</th>
+        <th>Rating</th>
+        <th>Experience</th>
+        <th>Fee/hr</th>
+        <th>Verified</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lawyer in lawyers %}
+      <tr class="admin-row">
+        <td>
+          {% if lawyer.photo_filename %}
+          <img src="{{ url_for('admin.lawyer_photo', filename=lawyer.photo_filename) }}"
+               class="admin-avatar-photo" alt="{{ lawyer.name }}">
+          {% else %}
+          <div class="admin-avatar-initials">
+            {{ lawyer.avatar_initials or lawyer.name[:2].upper() }}
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          <div class="lawyer-name-cell">{{ lawyer.name }}</div>
+          {% if lawyer.bar_council_no %}<div class="lawyer-bar-no">Bar: {{ lawyer.bar_council_no }}</div>{% endif %}
+        </td>
+        <td><span class="spec-tag">{{ lawyer.specialization }}</span></td>
+        <td>📍 {{ lawyer.location }}</td>
+        <td>
+          <div class="rating-cell">
+            <span class="star-filled">★</span> {{ "%.1f"|format(lawyer.rating) }}
+          </div>
+        </td>
+        <td>{{ lawyer.experience_years }} yr{{ 's' if lawyer.experience_years != 1 }}</td>
+        <td>{% if lawyer.fee_per_hour %}₹{{ lawyer.fee_per_hour }}/hr{% else %}—{% endif %}</td>
+        <td>
+          {% if lawyer.is_verified %}
+          <span class="badge-verified">✓ Verified</span>
+          {% else %}
+          <span class="badge-unverified">Pending</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="action-btns">
+            <a href="{{ url_for('admin.edit_lawyer', lawyer_id=lawyer.id) }}" class="btn-action btn-edit" title="Edit">✏️</a>
+            <form method="POST" action="{{ url_for('admin.delete_lawyer', lawyer_id=lawyer.id) }}"
+                  onsubmit="return confirm('Delete {{ lawyer.name }}? This cannot be undone.');" style="display:inline;">
+              <button type="submit" class="btn-action btn-delete" title="Delete">🗑️</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">👨‍⚖️</div>
+    <p>No lawyers found. <a href="{{ url_for('admin.add_lawyer') }}">Add your first lawyer</a>.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

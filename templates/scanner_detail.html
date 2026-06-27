@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Analysis: {{ document.original_name }}{% endblock %}
+{% block page_title %}Document Analysis{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('scanner.history') }}" class="back-link">← Back to History</a>
+    <h1 class="page-title">{{ document.original_name }}</h1>
+    <p class="page-subtitle">{{ document.document_type | capitalize }} Contract · Analyzed {{ document.upload_time }}</p>
+</div>
+
+<div class="card result-summary">
+    <div class="result-stats">
+        <div class="result-stat">
+            <div class="result-stat-value">{{ document.risk_score }}%</div>
+            <div class="result-stat-label">Risk Score</div>
+        </div>
+        <div class="result-stat">
+            <div class="result-stat-value">{{ document.clause_count }}</div>
+            <div class="result-stat-label">Clauses Analyzed</div>
+        </div>
+        <div class="result-stat">
+            <span class="badge badge-{{ document.risk_label | lower }} badge-lg">{{ document.risk_label }} RISK</span>
+        </div>
+    </div>
+</div>
+
+<div class="clause-list">
+    {% for c in clauses %}
+    <div class="clause-card clause-{{ c.risk_level | lower }}">
+        <div class="clause-header">
+            <span class="clause-num">Clause {{ c.clause_number }}</span>
+            <span class="clause-type-tag">{{ c.clause_type }}</span>
+            <span class="badge badge-{{ c.risk_level | lower }}">{{ c.risk_level }}</span>
+        </div>
+        <p class="clause-text">{{ c.clause_text }}</p>
+        <div class="clause-analysis">
+            <div class="analysis-row">
+                <span class="analysis-label">⚠️ Risk:</span>
+                <span>{{ c.explanation }}</span>
+            </div>
+            <div class="analysis-row">
+                <span class="analysis-label">✅ Fix:</span>
+                <span>{{ c.suggested_fix }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Find a Lawyer{% endblock %}
+{% block page_title %}Lawyer Connect{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">👨‍⚖️ Lawyer Connect</h1>
+    <p class="page-subtitle">Find verified Indian advocates by specialization, city, and rating.</p>
+  </div>
+  {% if current_user.role == 'admin' %}
+  <a href="{{ url_for('admin.lawyers') }}" class="btn btn-secondary">⚙️ Manage Lawyers</a>
+  {% endif %}
+</div>
+
+<!-- Filter Bar -->
+<div class="lawyer-filter-card">
+  <div class="filter-row" id="filterBar">
+    <div class="filter-group">
+      <label>🔍 Search</label>
+      <input type="text" id="searchInput" placeholder="Search by name…" class="filter-input">
+    </div>
+    <div class="filter-group">
+      <label>⚖️ Specialization</label>
+      <select id="specFilter" class="filter-select">
+        <option value="">All Specializations</option>
+        {% for s in specializations %}
+        <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>📍 City</label>
+      <select id="cityFilter" class="filter-select">
+        <option value="">All Cities</option>
+        {% for c in cities %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>⭐ Min Rating</label>
+      <select id="ratingFilter" class="filter-select">
+        <option value="0">Any Rating</option>
+        <option value="3">3.0+</option>
+        <option value="4">4.0+</option>
+        <option value="4.5">4.5+</option>
+      </select>
+    </div>
+    <button onclick="loadLawyers()" class="btn btn-primary">Find Lawyers</button>
+    <button onclick="resetFilters()" class="btn btn-ghost">Reset</button>
+  </div>
+</div>
+
+<!-- Results -->
+<div class="results-meta" id="resultsMeta" style="display:none;">
+  <span id="resultsCount"></span> lawyers found
+</div>
+
+<div class="lawyer-grid" id="lawyerGrid">
+  <div class="loading-lawyers">
+    <div class="spinner"></div>
+    <p>Loading lawyers…</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function starRating(rating) {
+  const full = Math.floor(rating);
+  const half = (rating % 1) >= 0.5;
+  let s = '';
+  for (let i = 0; i < 5; i++) {
+    if (i < full) s += '<span class="star-filled">★</span>';
+    else if (i === full && half) s += '<span class="star-half">★</span>';
+    else s += '<span class="star-empty">☆</span>';
+  }
+  return s;
+}
+
+function buildCard(l) {
+  const avatar = l.photo_filename
+    ? `<img src="/admin/lawyer-photo/${l.photo_filename}" class="lawyer-card-photo" alt="${l.name}">`
+    : `<div class="lawyer-card-initials">${(l.avatar_initials || l.name.slice(0,2)).toUpperCase()}</div>`;
+
+  const verified = l.is_verified
+    ? `<span class="verified-badge">✓ Verified</span>` : '';
+
+  const languages = l.languages
+    ? `<div class="lawyer-langs">🗣️ ${l.languages}</div>` : '';
+
+  const fee = l.fee_per_hour
+    ? `<div class="lawyer-fee">₹${l.fee_per_hour.toLocaleString('en-IN')}/hr</div>` : '';
+
+  const barNo = l.bar_council_no
+    ? `<div class="bar-council">Bar: ${l.bar_council_no}</div>` : '';
+
+  return `
+  <div class="lawyer-card" data-name="${l.name.toLowerCase()}"
+       data-spec="${l.specialization.toLowerCase()}"
+       data-city="${l.location.toLowerCase()}"
+       data-rating="${l.rating}">
+    <div class="lawyer-card-header">
+      ${avatar}
+      <div class="lawyer-card-meta">
+        <div class="lawyer-card-name">${l.name} ${verified}</div>
+        <div class="lawyer-card-spec-tag">${l.specialization}</div>
+        <div class="lawyer-card-rating">${starRating(l.rating)} <span>${l.rating.toFixed(1)}</span></div>
+      </div>
+    </div>
+    <div class="lawyer-card-body">
+      <div class="lawyer-info-row">📍 ${l.location} &nbsp;|&nbsp; 🏛️ ${l.experience_years} yrs exp</div>
+      ${barNo}
+      ${languages}
+      ${fee}
+      ${l.bio ? `<p class="lawyer-bio">${l.bio}</p>` : ''}
+    </div>
+    <div class="lawyer-card-actions">
+      ${l.contact ? `<a href="tel:${l.contact}" class="btn-lawyer-action btn-call">📞 Call</a>` : ''}
+      ${l.contact ? `<a href="https://wa.me/${l.contact.replace(/\D/g,'')}" target="_blank" class="btn-lawyer-action btn-whatsapp">💬 WhatsApp</a>` : ''}
+      ${l.email ? `<a href="mailto:${l.email}" class="btn-lawyer-action btn-email">✉️ Email</a>` : ''}
+    </div>
+  </div>`;
+}
+
+function loadLawyers() {
+  const search = document.getElementById('searchInput').value.trim();
+  const spec   = document.getElementById('specFilter').value;
+  const city   = document.getElementById('cityFilter').value;
+  const rating = document.getElementById('ratingFilter').value;
+
+  const grid = document.getElementById('lawyerGrid');
+  grid.innerHTML = '<div class="loading-lawyers"><div class="spinner"></div><p>Searching lawyers…</p></div>';
+
+  fetch('/api/find-lawyers', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({search, specialization: spec, city, min_rating: parseFloat(rating) || 0})
+  })
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('resultsMeta').style.display = 'flex';
+    document.getElementById('resultsCount').textContent = data.count || 0;
+    if (!data.lawyers || data.lawyers.length === 0) {
+      grid.innerHTML = `
+        <div class="empty-state full-width">
+          <div class="empty-icon">👨‍⚖️</div>
+          <p>No lawyers found matching your criteria.</p>
+          <button onclick="resetFilters()" class="btn btn-secondary">Clear Filters</button>
+        </div>`;
+      return;
+    }
+    grid.innerHTML = data.lawyers.map(buildCard).join('');
+  })
+  .catch(() => {
+    grid.innerHTML = '<div class="empty-state full-width"><p>Error loading lawyers. Please try again.</p></div>';
+  });
+}
+
+function resetFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('specFilter').value = '';
+  document.getElementById('cityFilter').value = '';
+  document.getElementById('ratingFilter').value = '0';
+  loadLawyers();
+}
+
+// Load on page ready
+document.addEventListener('DOMContentLoaded', loadLawyers);
+
+// Live search (debounced)
+let st;
+document.getElementById('searchInput').addEventListener('input', () => {
+  clearTimeout(st); st = setTimeout(loadLawyers, 350);
+});
+document.getElementById('specFilter').addEventListener('change', loadLawyers);
+document.getElementById('cityFilter').addEventListener('change', loadLawyers);
+document.getElementById('ratingFilter').addEventListener('change', loadLawyers);
+</script>
+{% endblock %}

@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+{% block title %}Emergency Mode{% endblock %}
+{% block page_title %}Emergency Mode{% endblock %}
+
+{% block content %}
+<!-- Include Leaflet CSS for Map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+
+<div class="page-header">
+    <h1 class="page-title">🚨 Protect Me — Emergency Mode</h1>
+    <p class="page-subtitle">Send an instant SOS with your GPS location. Record audio evidence securely.</p>
+</div>
+
+<!-- Voice Guardian Status -->
+<div class="card" style="text-align: center; background-color: #f8f9fa;">
+    <h3>🎙️ Voice Guardian</h3>
+    <div id="voiceStatus" style="font-weight: bold; color: #666; font-size: 1.2rem;">Initializing Mic...</div>
+    <p style="font-size: 0.9rem; color: #555;">Say <strong>"Protect me"</strong> to trigger emergency protocols. Say <strong>"Stop"</strong> to cancel.</p>
+</div>
+
+<!-- SOS Panel -->
+<div class="sos-panel">
+    <div class="sos-ring" id="sosRing">
+        <button class="sos-trigger-btn" id="sosTrigger" onclick="triggerEmergency()">
+            🚨<br>SOS
+        </button>
+    </div>
+    <p class="sos-hint">Tap the button or say "Protect Me" to send emergency SMS with your location</p>
+    <div id="sosStatus" class="sos-status" style="display:none;"></div>
+</div>
+
+<!-- Live Tracking Map Container -->
+<div class="card" id="mapCard" style="display: none;">
+    <h3>🗺️ Live Location Tracking</h3>
+    <p class="sos-hint">Your location is being actively tracked and synced to the cloud.</p>
+    <div id="liveMap" style="height: 300px; width: 100%; border-radius: 8px;"></div>
+</div>
+
+<!-- Audio Recording -->
+<div class="card audio-card">
+    <h3>🎙️ Record Audio Evidence</h3>
+    <p>Record your surroundings as evidence. Audio is saved securely to your account.</p>
+    <div class="audio-controls">
+        <button class="btn-primary" id="recordBtn" onclick="toggleRecording()">⏺ Start Recording</button>
+        <button class="btn-danger" id="stopSystemBtn" onclick="stopEmergency()" style="display:none; margin-left: 10px;">⏹ Stop Emergency System</button>
+        <div class="audio-timer" id="audioTimer">00:00</div>
+    </div>
+    <div id="audioStatus" class="audio-status"></div>
+    <div id="silenceStatus" style="font-size:0.8rem; color: gray; margin-top:5px;"></div>
+</div>
+
+<!-- Alert History -->
+<div class="card">
+    <div class="card-header">
+        <h3>📋 Alert History</h3>
+        <span class="badge badge-blue">{{ history|length }} alerts</span>
+    </div>
+    {% if history %}
+    <div class="timeline">
+        {% for alert in history %}
+        <div class="timeline-item">
+            <div class="timeline-dot timeline-dot-{{ alert.status }}"></div>
+            <div class="timeline-content">
+                <div class="timeline-header">
+                    <span class="timeline-time">{{ alert.timestamp }}</span>
+                    <span class="badge badge-{{ 'green' if alert.status == 'sent' else 'red' }}">{{ alert.status }}</span>
+                </div>
+                {% if alert.maps_url %}
+                <a href="{{ alert.maps_url }}" target="_blank" class="timeline-location">
+                    📍 {{ alert.latitude }}, {{ alert.longitude }} — View on Maps
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🛡️</div>
+        <p>No emergency alerts sent yet. Stay safe!</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- Include Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+let alertId = null;
+let emergencyActive = false;
+let watchId = null;
+let map = null;
+let marker = null;
+
+// ─── Voice Guardian (Speech Recognition) ─────────────────────────────────────
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let voiceStatusEl = document.getElementById('voiceStatus');
+
+if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    // recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+        if(!emergencyActive) {
+            voiceStatusEl.textContent = '🟢 Listening for "Protect me"...';
+            voiceStatusEl.style.color = 'green';
+        }
+    };
+
+    recognition.onresult = (event) => {
+        const current = event.resultIndex;
+        const transcript = event.results[current][0].transcript.trim().toLowerCase();
+        
+        console.log("Speech heard:", transcript);
+
+        // Allow some fuzziness in speech
+        if (transcript.includes("protect me") && !emergencyActive) {
+            voiceStatusEl.textContent = '🚨 EMERGENCY TRIGGERED BY VOICE!';
+            voiceStatusEl.style.color = 'red';
+            triggerEmergency();
+        } 
+        else if (transcript.includes("stop") && emergencyActive) {
+            stopEmergency();
+        }
+    };
+
+    recognition.onerror = (event) => {
+        console.error("SpeechError", event.error);
+        if(event.error === 'not-allowed') {
+            voiceStatusEl.textContent = '❌ Microphone access denied.';
+            voiceStatusEl.style.color = 'red';
+        }
+    };
+
+    recognition.onend = () => {
+        // Auto-restart listening if it drops, unless page is unloading
+        if(!emergencyActive) {
+            try { recognition.start(); } catch(e){}
+        }
+    };
+    
+    // Request permission by starting
+    try {
+        recognition.start();
+    } catch(e) {}
+} else {
+    voiceStatusEl.textContent = '❌ Voice Activation not supported in this browser.';
+    voiceStatusEl.style.color = 'red';
+}
+
+
+// ─── Emergency Orchestration ──────────────────────────────────────────────────
+async function triggerEmergency() {
+    if(emergencyActive) return;
+    emergencyActive = true;
+    
+    document.getElementById('sosRing').classList.add('sos-sent');
+    document.getElementById('stopSystemBtn').style.display = 'inline-block';
+    if(voiceStatusEl.textContent.indexOf('EMERGENCY') === -1) {
+         voiceStatusEl.textContent = '🚨 EMERGENCY ACTIVE!';
+         voiceStatusEl.style.color = 'red';
+    }
+
+    // 1. Initial SOS SMS
+    await sendInitialSOS();
+    
+    // 2. Start Live Tracking
+    startLiveTracking();
+    
+    // 3. Start Recording Audio (if not already)
+    if(!isRecording) {
+        await startRecording();
+    }
+}
+
+async function stopEmergency() {
+    if(!emergencyActive) return;
+    emergencyActive = false;
+    
+    document.getElementById('sosRing').classList.remove('sos-sent');
+    document.getElementById('stopSystemBtn').style.display = 'none';
+    voiceStatusEl.textContent = '🟢 Listening for "Protect me"...';
+    voiceStatusEl.style.color = 'green';
+    
+    // 1. Stop Location Tracking
+    if(watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+    }
+    
+    // 2. Stop Recording Audio -> Trigger upload & second SMS
+    if(isRecording) {
+        await stopRecording(); // Will stop and upload naturally
+    }
+    
+    // Optional: Restart speech recognition if it paused
+    if(recognition) {
+        try { recognition.start(); } catch(e){}
+    }
+    
+    showSOSStatus('Emergency stopped. Returning to standby mode.', 'success');
+}
+
+
+// ─── SOS & Location Tracking ──────────────────────────────────────────────────
+async function sendInitialSOS() {
+    const btn = document.getElementById('sosTrigger');
+    btn.disabled = true;
+    btn.innerHTML = '⏳<br>Sending...';
+
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            showSOSStatus('Geolocation not supported.', 'error');
+            resolve();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            try {
+                const res = await fetch('/api/send-alert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat, lng })
+                });
+                const data = await res.json();
+                alertId = data.alert_id;
+
+                if (data.success) {
+                    showSOSStatus('✅ SOS dispatched!', 'success');
+                } else {
+                    showSOSStatus('⚠️ Failed to dispatch SMS', 'warning');
+                }
+            } catch (err) {
+                 showSOSStatus('❌ Failed to route SOS', 'error');
+            }
+            resolve();
+        }, (err) => {
+            showSOSStatus('Could not get location: ' + err.message, 'error');
+            resolve();
+        });
+    });
+}
+
+function startLiveTracking() {
+    if (!navigator.geolocation) return;
+    
+    document.getElementById('mapCard').style.display = 'block';
+    
+    if(!map) {
+        map = L.map('liveMap').setView([0,0], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(map);
+    }
+    
+    watchId = navigator.geolocation.watchPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        
+        // Update map
+        map.setView([lat, lng], 16);
+        if(!marker) {
+            marker = L.marker([lat, lng]).addTo(map);
+        } else {
+            marker.setLatLng([lat, lng]);
+        }
+        
+        // Sync to backend
+        if(alertId) {
+            try {
+                fetch('/api/sync-location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ alert_id: alertId, lat, lng })
+                });
+            } catch(e) {}
+        }
+    }, (err) => {
+        console.error("GPS error", err);
+    }, {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 5000
+    });
+}
+
+function showSOSStatus(msg, type) {
+    const el = document.getElementById('sosStatus');
+    el.textContent = msg;
+    el.className = 'sos-status sos-' + type;
+    el.style.display = 'block';
+}
+
+// ─── Audio Recording & Silence Detection ──────────────────────────────────────
+let mediaRecorder = null;
+let chunks = [];
+let timerInterval = null;
+let seconds = 0;
+let isRecording = false;
+let audioContext = null;
+let silenceTimer = null;
+let silenceThresholdMs = 10 * 60 * 1000; // 10 minutes
+
+async function toggleRecording() {
+    if (isRecording) {
+        await stopRecording();
+    } else {
+        await startRecording();
+    }
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        chunks = [];
+        
+        // Silence Detection logic
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        let lastSoundTime = Date.now();
+        const checkSilence = () => {
+            if(!isRecording) {
+                document.getElementById('silenceStatus').textContent = "";
+                return;
+            }
+            
+            analyser.getByteFrequencyData(dataArray);
+            let avgVolume = dataArray.reduce((sum, val) => sum + val, 0) / dataArray.length;
+            
+            // Adjust silence threshold logic here
+            if (avgVolume > 2) { // arbitrary small threshold for basic sound
+                lastSoundTime = Date.now();
+                document.getElementById('silenceStatus').textContent = "";
+            } else {
+                let silentFor = Date.now() - lastSoundTime;
+                if(silentFor > 10000) { // show status after 10s of silence
+                    document.getElementById('silenceStatus').textContent = `Silence detected for ${Math.floor(silentFor/1000)}s... Auto-stop at 10m.`;
+                }
+                
+                if (silentFor >= silenceThresholdMs) {
+                    console.log("10 minutes of silence reached. Auto stopping.");
+                    stopEmergency();
+                    return; // exit loop
+                }
+            }
+            // run continuously using requestAnimationFrame loop
+            requestAnimationFrame(checkSilence);
+        };
+        checkSilence();
+        // End Silence Logic
+
+        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            await uploadAudio(blob);
+            stream.getTracks().forEach(t => t.stop());
+            if(audioContext) audioContext.close();
+            audioContext = null;
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        document.getElementById('recordBtn').textContent = '⏹ Stop Recording';
+        document.getElementById('recordBtn').classList.add('btn-recording');
+        seconds = 0;
+        timerInterval = setInterval(() => {
+            seconds++;
+            const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            document.getElementById('audioTimer').textContent = `${m}:${s}`;
+        }, 1000);
+    } catch (err) {
+        alert('Microphone access denied: ' + err.message);
+    }
+}
+
+async function stopRecording() {
+    if (!isRecording) return;
+    mediaRecorder.stop();
+    clearInterval(timerInterval);
+    isRecording = false;
+    document.getElementById('recordBtn').textContent = '⏺ Start Recording';
+    document.getElementById('recordBtn').classList.remove('btn-recording');
+}
+
+async function uploadAudio(blob) {
+    const formData = new FormData();
+    formData.append('audio', blob, 'evidence.webm');
+    if (alertId) formData.append('alert_id', alertId);
+
+    try {
+        const res = await fetch('/api/save-audio', { method: 'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('audioStatus').textContent = data.success
+            ? '✅ Audio saved and dispatched via SMS.'
+            : '❌ Failed to save audio: ' + data.error;
+    } catch (err) {
+        document.getElementById('audioStatus').textContent = '❌ Upload error: ' + err.message;
+    }
+}
+</script>
+{% endblock %}

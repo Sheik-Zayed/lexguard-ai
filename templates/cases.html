@@ -1,0 +1,137 @@
+{% extends "base.html" %} {% block title %}Case Matcher{% endblock %} {% block
+page_title %}Case Matcher{% endblock %} {% block content %}
+<div class="page-header">
+  <h1 class="page-title">📚 Past Case Matcher</h1>
+  <p class="page-subtitle">
+    Search our database of landmark Indian court cases by keyword, year, or
+    court.
+  </p>
+</div>
+
+<div class="card search-panel">
+  <div class="search-row">
+    <input
+      type="text"
+      id="caseQuery"
+      placeholder="e.g. murder, rape, theft, privacy rights, dowry..."
+      class="search-input-main"
+    />
+  </div>
+  <div class="filter-row">
+    <select id="caseYear">
+      <option value="">All Years</option>
+      {% for y in range(year_range.max, year_range.min - 1, -1) %}
+      <option value="{{ y }}">{{ y }}</option>
+      {% endfor %}
+    </select>
+    <select id="caseCourt">
+      <option value="">All Courts</option>
+      {% for court in courts %}
+      <option value="{{ court }}">{{ court }}</option>
+      {% endfor %}
+    </select>
+    <button
+      class="btn-primary"
+      id="searchBtn"
+      onclick="searchCases()"
+      style="
+        background-color: rgb(35, 238, 79);
+        color: rgb(22, 19, 194);
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+      "
+    >
+      🔍 Search Cases
+    </button>
+  </div>
+</div>
+
+<div id="loadingCases" class="loading-state" style="display: none">
+  <div class="loading-spinner"></div>
+  <p>Searching legal database...</p>
+</div>
+
+<div id="casesResults" style="display: none">
+  <div class="results-header">
+    <span id="caseCount" class="results-count"></span>
+  </div>
+  <div id="casesList" class="cases-grid"></div>
+</div>
+
+<div id="noCase" class="empty-state" style="display: none">
+  <div class="empty-icon">📚</div>
+  <h3>No cases found</h3>
+  <p>Try broader search terms like a crime type or legal concept.</p>
+</div>
+
+{% endblock %} {% block extra_js %}
+<script>
+  async function searchCases() {
+    const q = document.getElementById("caseQuery").value.trim();
+    if (!q) {
+      alert("Please enter a search query.");
+      return;
+    }
+
+    document.getElementById("loadingCases").style.display = "block";
+    document.getElementById("casesResults").style.display = "none";
+    document.getElementById("noCase").style.display = "none";
+    document.getElementById("searchBtn").disabled = true;
+
+    try {
+      const res = await fetch("/api/find-cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          year: document.getElementById("caseYear").value || null,
+          court: document.getElementById("caseCourt").value || null,
+        }),
+      });
+      const data = await res.json();
+      document.getElementById("loadingCases").style.display = "none";
+      document.getElementById("searchBtn").disabled = false;
+
+      if (data.success && data.cases.length > 0) {
+        document.getElementById("caseCount").textContent =
+          data.count + " case(s) found";
+        const grid = document.getElementById("casesList");
+        grid.innerHTML = data.cases
+          .map(
+            (c) => `
+                <div class="case-card">
+                    <div class="case-header">
+                        <div>
+                            <span class="case-act">${c.act_name || ""}</span>
+                            <span class="case-section">${c.section || ""}</span>
+                        </div>
+                        <span class="case-year">${c.year || ""}</span>
+                    </div>
+                    <h3 class="case-title">${c.title}</h3>
+                    <p class="case-court">🏛️ ${c.court || "Indian Court"}</p>
+                    <p class="case-summary">${c.summary || ""}</p>
+                    <details class="case-judgement">
+                        <summary>View Judgement</summary>
+                        <p>${c.judgement_text || "Judgement details not available."}</p>
+                    </details>
+                </div>
+            `,
+          )
+          .join("");
+        document.getElementById("casesResults").style.display = "block";
+      } else {
+        document.getElementById("noCase").style.display = "block";
+      }
+    } catch (err) {
+      document.getElementById("loadingCases").style.display = "none";
+      document.getElementById("searchBtn").disabled = false;
+      alert("Error: " + err.message);
+    }
+  }
+
+  document.getElementById("caseQuery").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") searchCases();
+  });
+</script>
+{% endblock %}

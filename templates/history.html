@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Document History{% endblock %}
+{% block page_title %}Document History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🗂️ Document History</h1>
+    <p class="page-subtitle">All documents you have uploaded and analyzed.</p>
+    <a href="{{ url_for('scanner.index') }}" class="btn-primary">+ Upload New Document</a>
+</div>
+
+{% if documents %}
+<div class="history-grid">
+    {% for doc in documents %}
+    <div class="history-card">
+        <div class="history-card-header">
+            <div class="history-icon">📄</div>
+            <div class="history-meta">
+                <h3 class="history-name" title="{{ doc.original_name }}">{{ doc.original_name }}</h3>
+                <p class="history-type">{{ doc.document_type | capitalize }} Contract</p>
+            </div>
+            <span class="badge badge-{{ doc.risk_label | lower }}">{{ doc.risk_label }}</span>
+        </div>
+
+        <div class="history-stats">
+            <div class="h-stat">
+                <span class="h-stat-val">{{ doc.risk_score }}%</span>
+                <span class="h-stat-label">Risk Score</span>
+            </div>
+            <div class="h-stat">
+                <span class="h-stat-val">{{ doc.clause_count }}</span>
+                <span class="h-stat-label">Clauses</span>
+            </div>
+        </div>
+
+        <div class="risk-bar-mini">
+            <div class="risk-bar-fill risk-bar-{{ doc.risk_label | lower }}" style="width: {{ doc.risk_score }}%"></div>
+        </div>
+
+        <div class="history-footer">
+            <span class="history-date">📅 {{ doc.upload_time }}</span>
+            <a href="{{ url_for('scanner.detail', doc_id=doc.id) }}" class="btn-sm btn-outline">View Analysis →</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">📄</div>
+    <h3>No documents yet</h3>
+    <p>Upload your first PDF contract to get started.</p>
+    <a href="{{ url_for('scanner.index') }}" class="btn-primary">Upload Document</a>
+</div>
+{% endif %}
+{% endblock %}
