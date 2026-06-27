@@ -1,0 +1,28 @@
+# LexGuard AI — Production Dependencies
+# Install: pip install -r requirements.txt
+
+# ── Core Web Framework ─────────────────────────────────────────────────────────
+flask>=3.1.0
+flask-sqlalchemy>=3.1.0
+flask-login>=0.6.3
+python-dotenv>=1.0.0
+
+# ── Database ───────────────────────────────────────────────────────────────────
+pymysql>=1.1.2
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+bcrypt>=5.0.0
+
+# ── Document Processing ────────────────────────────────────────────────────────
+pdfplumber>=0.11.0
+
+# ── HTTP Client (Twilio SOS) ───────────────────────────────────────────────────
+requests>=2.32.0
+
+# ── ML / Retrieval Engine (TF-IDF) ────────────────────────────────────────────
+scikit-learn>=1.7.0
+numpy>=2.0.0
+
+# ── LLM APIs (RAG Legal Advisor) ──────────────────────────────────────────────
+google-generativeai>=0.8.0
+openai>=1.0.0
